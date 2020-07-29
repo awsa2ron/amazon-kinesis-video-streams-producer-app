@@ -37,7 +37,7 @@ PVOID putVideoFrameRoutine(PVOID args)
     STATUS retStatus = STATUS_SUCCESS;
     PSampleCustomData data = (PSampleCustomData) args;
     Frame frame;
-    static UINT32 videoFileIndex= 0;
+    UINT32 videoFileIndex= 0;
     STATUS status;
     UINT64 runningTime, fileSize;
     CHAR filePath[MAX_PATH_LEN + 1];
