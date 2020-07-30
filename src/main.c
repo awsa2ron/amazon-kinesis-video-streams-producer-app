@@ -11,8 +11,8 @@
 #define AUDIO_TRACK_SAMPLING_RATE           48000
 #define AUDIO_TRACK_CHANNEL_CONFIG          2
 
-#define NUMBER_OF_H264_FRAME_FILES          403
-#define NUMBER_OF_AAC_FRAME_FILES           582
+#define NUMBER_OF_H264_FRAME_FILES          90
+#define NUMBER_OF_AAC_FRAME_FILES           299
 
 #define FILE_LOGGING_BUFFER_SIZE            (100 * 1024)
 #define MAX_NUMBER_OF_LOG_FILES             5
