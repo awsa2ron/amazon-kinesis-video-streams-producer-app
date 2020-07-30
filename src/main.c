@@ -28,7 +28,7 @@ typedef struct {
     UINT64 streamStartTime;
     STREAM_HANDLE streamHandle;
     CHAR sampleDir[MAX_PATH_LEN + 1];
-    FrameData audioFrames[NUMBER_OF_AAC_FRAME_FILES];
+    FrameData audioFrames;
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
@@ -81,6 +81,7 @@ PVOID putVideoFrameRoutine(PVOID args)
         frame.flags = videoFileIndex% DEFAULT_KEY_FRAME_INTERVAL == 0 ? FRAME_FLAG_KEY_FRAME : FRAME_FLAG_NONE;
 
         SAFE_MEMFREE(data->videoFrames.buffer);
+
         SNPRINTF(filePath, MAX_PATH_LEN, "%s/h264SampleFrames/frame-%03d.h264", data->sampleDir,videoFileIndex);
         CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
         data->videoFrames.buffer = (PBYTE) MEMALLOC(fileSize);
@@ -112,14 +113,21 @@ PVOID putAudioFrameRoutine(PVOID args)
     STATUS retStatus = STATUS_SUCCESS;
     PSampleCustomData data = (PSampleCustomData) args;
     Frame frame;
-    UINT32 fileIndex = 0;
+    UINT32 audioFileIndex = 0;
     STATUS status;
-    UINT64 runningTime;
+    UINT64 runningTime, fileSize;
+    CHAR filePath[MAX_PATH_LEN + 1];
 
     CHK(data != NULL, STATUS_NULL_ARG);
 
-    frame.frameData = data->audioFrames[fileIndex].buffer;
-    frame.size = data->audioFrames[fileIndex].size;
+    SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data->sampleDir, audioFileIndex + 1);
+    CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
+    data->audioFrames.buffer = (PBYTE) MEMALLOC(fileSize);
+    data->audioFrames.size = fileSize;
+    CHK_STATUS(readFile(filePath, TRUE, data->audioFrames.buffer, &fileSize));
+
+    frame.frameData = data->audioFrames.buffer;
+    frame.size = data->audioFrames.size;
     frame.version = FRAME_CURRENT_VERSION;
     frame.trackId = DEFAULT_AUDIO_TRACK_ID;
     frame.duration = 0;
@@ -141,9 +149,21 @@ PVOID putAudioFrameRoutine(PVOID args)
             frame.decodingTs = frame.presentationTs;
             frame.index++;
 
-            fileIndex = (fileIndex + 1) % NUMBER_OF_AAC_FRAME_FILES;
-            frame.frameData = data->audioFrames[fileIndex].buffer;
-            frame.size = data->audioFrames[fileIndex].size;
+            //fileIndex = (fileIndex + 1) % NUMBER_OF_AAC_FRAME_FILES;
+            if(audioFileIndex == NUMBER_OF_AAC_FRAME_FILES)
+                audioFileIndex = 0;
+            audioFileIndex++;
+
+            SAFE_MEMFREE(data->audioFrames.buffer);
+
+            SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data->sampleDir, audioFileIndex);
+            CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
+            data->audioFrames.buffer = (PBYTE) MEMALLOC(fileSize);
+            data->audioFrames.size = fileSize;
+            CHK_STATUS(readFile(filePath, TRUE, data->audioFrames.buffer, &fileSize));
+
+            frame.frameData = data->audioFrames.buffer;
+            frame.size = data->audioFrames.size;
 
             // synchronize putKinesisVideoFrame to running time
             runningTime = defaultGetTime() - data->streamStartTime;
@@ -201,16 +221,6 @@ INT32 main(INT32 argc, CHAR *argv[])
             data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
         }
     }
-
-    printf("Loading audio frames...\n");
-    for(i = 0; i < NUMBER_OF_AAC_FRAME_FILES; ++i) {
-        SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data.sampleDir, i + 1);
-        CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-        data.audioFrames[i].buffer = (PBYTE) MEMALLOC(fileSize);
-        data.audioFrames[i].size = fileSize;
-        CHK_STATUS(readFile(filePath, TRUE, data.audioFrames[i].buffer, &fileSize));
-    }
-    printf("Done loading audio frames.\n");
 
 
     cacertPath = getenv(CACERT_PATH_ENV_VAR);
@@ -300,9 +310,6 @@ CleanUp:
         printf("Failed with status 0x%08x\n", retStatus);
     }
 
-    for(i = 0; i < NUMBER_OF_AAC_FRAME_FILES; ++i) {
-        SAFE_MEMFREE(data.audioFrames[i].buffer);
-    }
 
     freeDeviceInfo(&pDeviceInfo);
     freeStreamInfoProvider(&pStreamInfo);
