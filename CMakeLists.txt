@@ -27,6 +27,11 @@ add_dependencies(KinesisVideoProducerApp project_libkvs)
 set(KVS_PATH ${CMAKE_CURRENT_SOURCE_DIR}/build/KinesisVideoProducerC/src/project_libkvs)
 set(KVS_PIC_PATH ${KVS_PATH}/dependency/libkvspic/kvspic-src/src)
 
+if("${CMAKE_C_COMPILER_ID}" MATCHES "GNU|Clang")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -ldl")
+
+endif()
+
 include_directories(
                     ${KVS_PATH}/src/include
                     ${KVS_PIC_PATH}/state/include
@@ -41,14 +46,14 @@ include_directories(
 )
 
 target_link_libraries (KinesisVideoProducerApp
-                        ${KVS_PATH}-build/libcproducer.a
-                        ${KVS_PATH}-build/libkvsCommonCurl.a
-                        ${KVS_PATH}-build/dependency/libkvspic/kvspic-src/libkvspic.a
-                        ${KVS_PATH}/open-source/lib64/libcurl.a
-                        ${KVS_PATH}/open-source/lib/libmbedtls.a
-                        ${KVS_PATH}/open-source/lib/libmbedx509.a
-                        ${KVS_PATH}/open-source/lib/libmbedcrypto.a
-                        ZLIB::ZLIB
-                        Threads::Threads
-                        ${CMAKE_DL_LIBS}
-                        )
+                    ${KVS_PATH}-build/libcproducer.a
+                    ${KVS_PATH}-build/libkvsCommonCurl.a
+                    ${KVS_PATH}-build/dependency/libkvspic/kvspic-src/libkvspic.a
+                    ${KVS_PATH}/open-source/lib/libcurl.a
+                    ${KVS_PATH}/open-source/lib/libmbedtls.a
+                    ${KVS_PATH}/open-source/lib/libmbedx509.a
+                    ${KVS_PATH}/open-source/lib/libmbedcrypto.a
+                    ZLIB::ZLIB
+                    Threads::Threads
+                    ${CMAKE_DL_LIBS}
+                    )
