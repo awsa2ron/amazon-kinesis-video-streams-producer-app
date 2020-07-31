@@ -110,14 +110,6 @@ PVOID putAudioFrameRoutine(PVOID args)
 
     CHK(data != NULL, STATUS_NULL_ARG);
 
-    SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data->sampleDir, audioFileIndex + 1);
-    CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-    data->audioFrames.buffer = (PBYTE) MEMALLOC(fileSize);
-    data->audioFrames.size = fileSize;
-    CHK_STATUS(readFile(filePath, TRUE, data->audioFrames.buffer, &fileSize));
-
-    frame.frameData = data->audioFrames.buffer;
-    frame.size = data->audioFrames.size;
     frame.version = FRAME_CURRENT_VERSION;
     frame.trackId = DEFAULT_AUDIO_TRACK_ID;
     frame.duration = 0;
@@ -129,6 +121,15 @@ PVOID putAudioFrameRoutine(PVOID args)
     while (defaultGetTime() < data->streamStopTime) {
         // no audio can be put until first video frame is put
         if (ATOMIC_LOAD_BOOL(&data->firstVideoFramePut)) {
+            SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data->sampleDir, audioFileIndex + 1);
+            CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
+            data->audioFrames.buffer = (PBYTE) MEMALLOC(fileSize);
+            data->audioFrames.size = fileSize;
+            CHK_STATUS(readFile(filePath, TRUE, data->audioFrames.buffer, &fileSize));
+
+            frame.frameData = data->audioFrames.buffer;
+            frame.size = data->audioFrames.size;
+
             status = putKinesisVideoFrame(data->streamHandle, &frame);
             if (STATUS_FAILED(status)) {
                 printf("putKinesisVideoFrame for audio failed with 0x%08x\n", status);
@@ -139,21 +140,11 @@ PVOID putAudioFrameRoutine(PVOID args)
             frame.decodingTs = frame.presentationTs;
             frame.index++;
 
-            //fileIndex = (fileIndex + 1) % NUMBER_OF_AAC_FRAME_FILES;
+            audioFileIndex++;
             if(audioFileIndex == NUMBER_OF_AAC_FRAME_FILES)
                 audioFileIndex = 0;
-            audioFileIndex++;
 
             SAFE_MEMFREE(data->audioFrames.buffer);
-
-            SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data->sampleDir, audioFileIndex);
-            CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-            data->audioFrames.buffer = (PBYTE) MEMALLOC(fileSize);
-            data->audioFrames.size = fileSize;
-            CHK_STATUS(readFile(filePath, TRUE, data->audioFrames.buffer, &fileSize));
-
-            frame.frameData = data->audioFrames.buffer;
-            frame.size = data->audioFrames.size;
 
             // synchronize putKinesisVideoFrame to running time
             runningTime = defaultGetTime() - data->streamStartTime;
