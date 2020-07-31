@@ -44,14 +44,7 @@ PVOID putVideoFrameRoutine(PVOID args)
 
     CHK(data != NULL, STATUS_NULL_ARG);
 
-    SNPRINTF(filePath, MAX_PATH_LEN, "%s/h264SampleFrames/frame-%03d.h264", data->sampleDir, videoFileIndex+ 1);
-    CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-    data->videoFrames.buffer = (PBYTE) MEMALLOC(fileSize);
-    data->videoFrames.size = fileSize;
-    CHK_STATUS(readFile(filePath, TRUE, data->videoFrames.buffer, &fileSize));
 
-    frame.frameData = data->videoFrames.buffer;
-    frame.size = data->videoFrames.size;
     frame.version = FRAME_CURRENT_VERSION;
     frame.trackId = DEFAULT_VIDEO_TRACK_ID;
     frame.duration = 0;
@@ -59,10 +52,19 @@ PVOID putVideoFrameRoutine(PVOID args)
     frame.presentationTs = 0;
     frame.index = 0;
 
-    // video track is used to mark new fragment. A new fragment is generated for every frame with FRAME_FLAG_KEY_FRAME
-    frame.flags = videoFileIndex% DEFAULT_KEY_FRAME_INTERVAL == 0 ? FRAME_FLAG_KEY_FRAME : FRAME_FLAG_NONE;
-
     while (defaultGetTime() < data->streamStopTime) {
+        SNPRINTF(filePath, MAX_PATH_LEN, "%s/h264SampleFrames/frame-%03d.h264", data->sampleDir, videoFileIndex + 1);
+        CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
+        data->videoFrames.buffer = (PBYTE) MEMALLOC(fileSize);
+        data->videoFrames.size = fileSize;
+        CHK_STATUS(readFile(filePath, TRUE, data->videoFrames.buffer, &fileSize));
+
+        frame.frameData = data->videoFrames.buffer;
+        frame.size = data->videoFrames.size;
+
+        // video track is used to mark new fragment. A new fragment is generated for every frame with FRAME_FLAG_KEY_FRAME
+        frame.flags = videoFileIndex% DEFAULT_KEY_FRAME_INTERVAL == 0 ? FRAME_FLAG_KEY_FRAME : FRAME_FLAG_NONE;
+
         status = putKinesisVideoFrame(data->streamHandle, &frame);
         ATOMIC_STORE_BOOL(&data->firstVideoFramePut, TRUE);
         if (STATUS_FAILED(status)) {
@@ -74,23 +76,11 @@ PVOID putVideoFrameRoutine(PVOID args)
         frame.decodingTs = frame.presentationTs;
         frame.index++;
 
-        //videoFileIndex= (videoFileIndex+ 1) % NUMBER_OF_H264_FRAME_FILES;
+        videoFileIndex++;
         if(videoFileIndex == NUMBER_OF_H264_FRAME_FILES)
             videoFileIndex = 0;
-        videoFileIndex++;
-        frame.flags = videoFileIndex% DEFAULT_KEY_FRAME_INTERVAL == 0 ? FRAME_FLAG_KEY_FRAME : FRAME_FLAG_NONE;
 
         SAFE_MEMFREE(data->videoFrames.buffer);
-
-        SNPRINTF(filePath, MAX_PATH_LEN, "%s/h264SampleFrames/frame-%03d.h264", data->sampleDir,videoFileIndex);
-        CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-        data->videoFrames.buffer = (PBYTE) MEMALLOC(fileSize);
-        data->videoFrames.size = fileSize;
-        CHK_STATUS(readFile(filePath, TRUE, data->videoFrames.buffer, &fileSize));
-
-        frame.frameData = data->videoFrames.buffer;
-        frame.size = data->videoFrames.size;
-
         // synchronize putKinesisVideoFrame to running time
         runningTime = defaultGetTime() - data->streamStartTime;
         if (runningTime < frame.presentationTs) {
