@@ -55,4 +55,4 @@ Related
 
 License
 
-This library is licensed under the Apache 2.0 License.
+This solution is licensed under the MIT License. See the LICENSE file.
