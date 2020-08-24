@@ -1,4 +1,6 @@
 #include <com/amazonaws/kinesis/video/cproducer/Include.h>
+#include <unistd.h>
+#include <getopt.h>
 
 #define DEFAULT_RETENTION_PERIOD            2 * HUNDREDS_OF_NANOS_IN_AN_HOUR
 #define DEFAULT_BUFFER_DURATION             120 * HUNDREDS_OF_NANOS_IN_A_SECOND
@@ -10,6 +12,7 @@
 #define SAMPLE_VIDEO_FRAME_DURATION         (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 #define AUDIO_TRACK_SAMPLING_RATE           48000
 #define AUDIO_TRACK_CHANNEL_CONFIG          2
+#define DEFAULT_STORAGE_SIZE                2 * 1024 * 1024
 
 #define NUMBER_OF_H264_FRAME_FILES          90
 #define NUMBER_OF_AAC_FRAME_FILES           299
@@ -165,6 +168,90 @@ CleanUp:
 
 INT32 main(INT32 argc, CHAR *argv[])
 {
+    int choice;
+    int *channel_name_opt = 0;
+    int *duration_opt = 0;
+    int *media_dir_opt = 0;
+    int *buffer_size_opt = 0;
+    /* Flag set by '--x509' */
+    static int x509_flag = 0;
+
+    static struct option long_options[] = {
+        /*   NAME       ARGUMENT           FLAG     SHORTNAME */
+        {"channel-name",    required_argument,       NULL, 'n'},
+        {"duration",    required_argument,       NULL, 'd'},
+        {"dir",         required_argument,       NULL, 'D'},
+        {"size",        required_argument,       NULL, 's'},
+        {"x509",        no_argument,       &x509_flag, 1},
+        {"help",        no_argument,       NULL, 'h'},
+        {NULL,      0,                 NULL, 0}
+    };
+    int option_index = 0;
+
+    while ((choice = getopt_long(argc, argv, ":n:d:D:s:h",
+                 long_options, &option_index)) != -1) {
+        int this_option_optind = optind ? optind : 1;
+        switch (choice) {
+        case 0:
+            printf ("option %s", long_options[option_index].name);
+            if (optarg)
+                printf (" with arg %s", optarg);
+            printf ("\n");
+            break;
+        case 'n':
+            printf ("KVS channel name is '%s'\n", optarg);
+            channel_name_opt = optarg;
+            break;
+        case 'd':
+            printf ("KVS streaming for '%s' seconds\n", optarg);
+            duration_opt = optarg;
+            break;
+        case 'D':
+            printf ("KVS stream media from '%s'\n", optarg);
+            media_dir_opt = optarg;
+            break;
+        case 's':
+            printf ("KVS video buffer size is '%s'KB\n", optarg);
+            buffer_size_opt = optarg;
+            break;
+        case 'h':
+            printf ("Usage: KinesisVideoProducerApp [OPTION]...\n");
+            printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
+            printf ("\n");
+            printf ("Mandatory arguments to long options are mandatory for short options too.\n");
+            printf ("-n, --name             stream name\n");
+            printf ("-d, --duration         streaming duration\n");
+            printf ("-D, --dir              streaming dir\n");
+            printf ("-s, --size             buffer size\n");
+            printf ("\n");
+            printf ("Exit status:\n \
+0  if OK,\n \
+1  if minor problems (e.g., cannot access subdirectory),\n \
+2  if serious trouble (e.g., cannot access command-line argument).\n");
+            exit (0);
+            break;
+        case ':':
+        /* missing option argument */
+        fprintf(stderr, "%s: option '-%choice' requires an argument\n",
+                argv[0], optopt);
+            break;
+        case '?':
+            break;
+        default:
+            printf ("?? getopt returned character code 0%o ??\n", choice);
+        }
+    }
+    /* we report the final status resulting. */
+    if (x509_flag)
+        printf ("X.509 flag is %d \n", x509_flag);
+
+    if (optind < argc) {
+        printf ("non-option ARGV-elements: ");
+        while (optind < argc)
+            printf ("%s ", argv[optind++]);
+        printf ("\n");
+    }
+    
     PDeviceInfo pDeviceInfo = NULL;
     PStreamInfo pStreamInfo = NULL;
     PClientCallbacks pClientCallbacks = NULL;
@@ -173,7 +260,7 @@ INT32 main(INT32 argc, CHAR *argv[])
     STREAM_HANDLE streamHandle = INVALID_STREAM_HANDLE_VALUE;
     STATUS retStatus = STATUS_SUCCESS;
     PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, streamName = NULL, region = NULL, cacertPath = NULL;
-    UINT64 streamStopTime, streamingDuration = DEFAULT_STREAM_DURATION, fileSize = 0;
+    UINT64 streamStopTime, streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE, fileSize = 0;
     TID audioSendTid, videoSendTid;
     SampleCustomData data;
     UINT32 i;
@@ -183,40 +270,27 @@ INT32 main(INT32 argc, CHAR *argv[])
     CHAR filePath[MAX_PATH_LEN + 1];
     MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
 
-    if (argc < 2) {
-        printf("Usage: AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET %s <stream_name> <duration_in_seconds> <frame_files_path>\n", argv[0]);
-        CHK(FALSE, STATUS_INVALID_ARG);
-    }
-
     if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
         printf("Error missing credentials\n");
         CHK(FALSE, STATUS_INVALID_ARG);
     }
 
     MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
-    if (argc < 4) {
-        STRCPY(data.sampleDir, (PCHAR) "../samples");
-    } else {
-        STRNCPY(data.sampleDir, argv[3], MAX_PATH_LEN);
-        if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
-            data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
-        }
+    STRNCPY(data.sampleDir, media_dir_opt, MAX_PATH_LEN);
+    if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
+        data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
     }
-
 
     cacertPath = getenv(CACERT_PATH_ENV_VAR);
     sessionToken = getenv(SESSION_TOKEN_ENV_VAR);
-    streamName = argv[1];
+    streamName = channel_name_opt;
     if ((region = getenv(DEFAULT_REGION_ENV_VAR)) == NULL) {
         region = (PCHAR) DEFAULT_AWS_REGION;
     }
 
-    if (argc >= 3) {
-        // Get the duration and convert to an integer
-        CHK_STATUS(STRTOUI64(argv[2], NULL, 10, &streamingDuration));
-        printf("streaming for %" PRIu64 " seconds\n", streamingDuration);
-        streamingDuration *= HUNDREDS_OF_NANOS_IN_A_SECOND;
-    }
+    // Get the duration and convert to an integer
+    CHK_STATUS(STRTOUI64(duration_opt, NULL, 10, &streamingDuration));
+    streamingDuration *= HUNDREDS_OF_NANOS_IN_A_SECOND;
 
     streamStopTime = defaultGetTime() + streamingDuration;
 
@@ -224,7 +298,9 @@ INT32 main(INT32 argc, CHAR *argv[])
     CHK_STATUS(createDefaultDeviceInfo(&pDeviceInfo));
     // adjust members of pDeviceInfo here if needed
     pDeviceInfo->clientInfo.loggerLogLevel = LOG_LEVEL_DEBUG;
-    pDeviceInfo->storageInfo.storageSize = 2 * 1024 * 1024;
+
+    CHK_STATUS(STRTOUI64(buffer_size_opt, NULL, 10, &bufferSize));
+    pDeviceInfo->storageInfo.storageSize = bufferSize * 1024;
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
 
