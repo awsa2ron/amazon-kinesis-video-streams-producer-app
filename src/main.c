@@ -35,6 +35,24 @@ typedef struct {
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
+void display_usage( int err )
+{
+    printf ("Usage: KinesisVideoProducerApp [OPTION]...\n");
+    printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
+    printf ("\n");
+    printf ("Mandatory arguments to long options are mandatory for short options too.\n");
+    printf ("-n, --name             stream name\n");
+    printf ("-d, --duration         streaming duration\n");
+    printf ("-D, --dir              streaming dir\n");
+    printf ("-s, --size             buffer size\n");
+    printf ("\n");
+    printf ("Exit status:\n \
+    0  if OK,\n \
+    1  if minor problems (e.g., missing argument),\n \
+    others  if serious trouble, please check 'Include.h' files.\n");
+    exit (err);
+}
+
 PVOID putVideoFrameRoutine(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -190,7 +208,6 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     while ((choice = getopt_long(argc, argv, ":n:d:D:s:h",
                  long_options, &option_index)) != -1) {
-        int this_option_optind = optind ? optind : 1;
         switch (choice) {
         case 0:
             printf ("option %s", long_options[option_index].name);
@@ -215,25 +232,13 @@ INT32 main(INT32 argc, CHAR *argv[])
             buffer_size_opt = optarg;
             break;
         case 'h':
-            printf ("Usage: KinesisVideoProducerApp [OPTION]...\n");
-            printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
-            printf ("\n");
-            printf ("Mandatory arguments to long options are mandatory for short options too.\n");
-            printf ("-n, --name             stream name\n");
-            printf ("-d, --duration         streaming duration\n");
-            printf ("-D, --dir              streaming dir\n");
-            printf ("-s, --size             buffer size\n");
-            printf ("\n");
-            printf ("Exit status:\n \
-0  if OK,\n \
-1  if minor problems (e.g., cannot access subdirectory),\n \
-2  if serious trouble (e.g., cannot access command-line argument).\n");
-            exit (0);
+            display_usage(0);
             break;
         case ':':
         /* missing option argument */
-        fprintf(stderr, "%s: option '-%choice' requires an argument\n",
+        fprintf(stderr, "%s: option '-%c' requires an argument\n",
                 argv[0], optopt);
+            display_usage(1);
             break;
         case '?':
             break;
@@ -300,8 +305,8 @@ INT32 main(INT32 argc, CHAR *argv[])
     pDeviceInfo->clientInfo.loggerLogLevel = LOG_LEVEL_DEBUG;
 
     CHK_STATUS(STRTOUI64(buffer_size_opt, NULL, 10, &bufferSize));
-    // must larger than MIN_HEAP_SIZE
-    CHK_STATUS(bufferSize < MIN_HEAP_SIZE);
+    // must larger than MIN_STORAGE_ALLOCATION_SIZE
+    CHK_STATUS(bufferSize < MIN_STORAGE_ALLOCATION_SIZE / 1024);
     pDeviceInfo->storageInfo.storageSize = bufferSize * 1024;
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
