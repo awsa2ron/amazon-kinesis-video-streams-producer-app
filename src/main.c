@@ -300,6 +300,8 @@ INT32 main(INT32 argc, CHAR *argv[])
     pDeviceInfo->clientInfo.loggerLogLevel = LOG_LEVEL_DEBUG;
 
     CHK_STATUS(STRTOUI64(buffer_size_opt, NULL, 10, &bufferSize));
+    // must larger than MIN_HEAP_SIZE
+    CHK_STATUS(bufferSize < MIN_HEAP_SIZE);
     pDeviceInfo->storageInfo.storageSize = bufferSize * 1024;
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
