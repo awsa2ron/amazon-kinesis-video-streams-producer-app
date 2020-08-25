@@ -62,8 +62,8 @@ typedef struct {
 static struct option long_options[] = {
     /*   NAME       ARGUMENT           FLAG     SHORTNAME */
     {"channel-name",    required_argument,       NULL, 'n'},
-    {"duration",    required_argument,       NULL, 'd'},
-    {"dir",         required_argument,       NULL, 'D'},
+    {"directory",    required_argument,       NULL, 'd'},
+    {"duration",         required_argument,       NULL, 'D'},
     {"size",        required_argument,       NULL, 's'},
     {"help",        no_argument,       NULL, 'h'},
     {NULL,      0,                 NULL, 0}
@@ -83,7 +83,7 @@ void displayUsage( int err )
     printf ("-D, --duration         streaming duration in second\n");
     printf ("                       default to 600\n");
     printf ("-s, --size             stream buffer size in KB\n");
-    printf ("                       default to 2048\n");
+    printf ("                       default to 2048, minimal to 1024\n");
     printf ("\n");
     printf ("Exit status:\n \
     0  if OK,\n \
