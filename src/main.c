@@ -25,19 +25,22 @@
 
 #define DEFAULT_RETENTION_PERIOD            2 * HUNDREDS_OF_NANOS_IN_AN_HOUR
 #define DEFAULT_BUFFER_DURATION             120 * HUNDREDS_OF_NANOS_IN_A_SECOND
-#define DEFAULT_CALLBACK_CHAIN_COUNT        5
 #define DEFAULT_KEY_FRAME_INTERVAL          45
 #define DEFAULT_FPS_VALUE                   25
 #define DEFAULT_STREAM_DURATION             20 * HUNDREDS_OF_NANOS_IN_A_SECOND
+#define DEFAULT_STORAGE_SIZE                2 * 1024 * 1024
+#define DEFAULT_MEDIA_DIRECTORY             "../" 
+#define DEFAULT_CHANNEL_NAME                "your-kvs-name" 
+#define DEFAULT_AWS_REGION                  "ap-northeast-1" 
 #define SAMPLE_AUDIO_FRAME_DURATION         (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 #define SAMPLE_VIDEO_FRAME_DURATION         (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 #define AUDIO_TRACK_SAMPLING_RATE           48000
 #define AUDIO_TRACK_CHANNEL_CONFIG          2
-#define DEFAULT_STORAGE_SIZE                20 * 1024 * 1024
 
 #define NUMBER_OF_H264_FRAME_FILES          90
 #define NUMBER_OF_AAC_FRAME_FILES           299
 
+#define DEFAULT_LOG_LEVEL                   LOG_LEVEL_INFO
 #define FILE_LOGGING_BUFFER_SIZE            (100 * 1024)
 #define MAX_NUMBER_OF_LOG_FILES             5
 
@@ -56,27 +59,25 @@ typedef struct {
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
-/* Flag set by '--x509' */
-static int x509_flag = 0;
-
 static struct option long_options[] = {
     /*   NAME       ARGUMENT           FLAG     SHORTNAME */
     {"channel-name",    required_argument,       NULL, 'n'},
     {"duration",    required_argument,       NULL, 'd'},
     {"dir",         required_argument,       NULL, 'D'},
     {"size",        required_argument,       NULL, 's'},
-    {"x509",        no_argument,       &x509_flag, 1},
     {"help",        no_argument,       NULL, 'h'},
     {NULL,      0,                 NULL, 0}
 };
 
-void display_usage( int err )
+void displayUsage( int err )
 {
-    printf ("Usage: KinesisVideoProducerApp -n <channel-name> [OPTION]...\n");
     printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
+    printf ("Usage: \n");
+    printf ("AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET\n");
+    printf ("KinesisVideoProducerApp [OPTION]...\n");
     printf ("\n");
-    printf ("Mandatory arguments to long options are mandatory for short options too.\n");
     printf ("-n, --channel-name     stream channel name\n");
+    printf ("                       default to 'your-kvs-name'\n");
     printf ("-d, --directory        streaming media directory\n");
     printf ("                       default to '../'\n");
     printf ("-D, --duration         streaming duration in second\n");
@@ -102,7 +103,6 @@ PVOID putVideoFrameRoutine(PVOID args)
     CHAR filePath[MAX_PATH_LEN + 1];
 
     CHK(data != NULL, STATUS_NULL_ARG);
-
 
     frame.version = FRAME_CURRENT_VERSION;
     frame.trackId = DEFAULT_VIDEO_TRACK_ID;
@@ -231,32 +231,15 @@ INT32 main(INT32 argc, CHAR *argv[])
     CLIENT_HANDLE clientHandle = INVALID_CLIENT_HANDLE_VALUE;
     STREAM_HANDLE streamHandle = INVALID_STREAM_HANDLE_VALUE;
     STATUS retStatus = STATUS_SUCCESS;
-    PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, streamName = NULL, region = NULL, cacertPath = NULL;
-    UINT64 streamStopTime,  fileSize = 0;
+    PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, region = NULL, cacertPath = NULL;
+    PCHAR streamName = DEFAULT_CHANNEL_NAME, mediaDirectory = DEFAULT_MEDIA_DIRECTORY;
+    UINT64 streamStopTime, fileSize = 0, choice, option_index = 0;
+    UINT64 streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE;
     TID audioSendTid, videoSendTid;
-    SampleCustomData data;
-    UINT32 i;
     PTrackInfo pAudioTrack = NULL;
     BYTE audioCpd[KVS_AAC_CPD_SIZE_BYTE];
 
-    CHAR filePath[MAX_PATH_LEN + 1];
-    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
-
-    if (argc < 3) {
-        display_usage(1);
-        CHK(FALSE, STATUS_INVALID_ARG);
-    }
-
-    if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
-        printf("Error missing credentials\n");
-        CHK(FALSE, STATUS_INVALID_ARG);
-    }
-
-    int choice;
-    int *channel_name = 0;
-    int *media_dir = "../";
-    UINT64 streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE;
-    int option_index = 0;
+    SampleCustomData data;
 
     while ((choice = getopt_long(argc, argv, ":n:d:D:s:h",
                  long_options, &option_index)) != -1) {
@@ -268,12 +251,12 @@ INT32 main(INT32 argc, CHAR *argv[])
             printf ("\n");
             break;
         case 'n':
-            channel_name = optarg;
-            printf ("KVS channel name is '%s'\n", channel_name);
+            streamName = optarg;
+            printf ("KVS channel name is '%s'\n", streamName);
             break;
         case 'd':
-            media_dir = optarg;
-            printf ("KVS stream media from '%s'\n", media_dir);
+            mediaDirectory = optarg;
+            printf ("KVS stream media from '%s'\n", mediaDirectory);
             break;
         case 'D':
             CHK_STATUS(STRTOUI64(optarg, NULL, 10, &streamingDuration));
@@ -282,45 +265,41 @@ INT32 main(INT32 argc, CHAR *argv[])
         case 's':
             CHK_STATUS(STRTOUI64(optarg, NULL, 10, &bufferSize));
             bufferSize *= 1024;
-            printf ("KVS video buffer size is %d KB\n", bufferSize);
+            printf ("KVS video buffer size is %d Bytes\n", bufferSize);
             break;
         case 'h':
-            display_usage(0);
+            displayUsage(0);
             break;
         case ':':
-        /* missing option argument */
-        fprintf(stderr, "%s: option '-%c' requires an argument\n",
-                argv[0], optopt);
-            display_usage(1);
+            /* missing option argument */
+            fprintf(stderr, "%s: option '-%c' requires an argument\n", argv[0], optopt);
+            displayUsage(1);
             break;
         case '?':
+            /* getopt_long already printed an error message. */
+            displayUsage(1);
             break;
         default:
             printf ("?? getopt returned character code 0%o ??\n", choice);
+            displayUsage(1);
         }
     }
-    /* we report the final status resulting. */
-    if (x509_flag)
-        printf ("X.509 flag is %d \n", x509_flag);
 
-    if (optind < argc) {
-        printf ("non-option ARGV-elements: ");
-        while (optind < argc)
-            printf ("%s ", argv[optind++]);
-        printf ("\n");
+    if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
+        printf("Error missing credentials\n");
+        CHK(FALSE, STATUS_INVALID_ARG);
     }
-    
-    MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
-    STRNCPY(data.sampleDir, media_dir, MAX_PATH_LEN);
-    if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
-        data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
-    }
-
     cacertPath = getenv(CACERT_PATH_ENV_VAR);
     sessionToken = getenv(SESSION_TOKEN_ENV_VAR);
-    streamName = channel_name;
     if ((region = getenv(DEFAULT_REGION_ENV_VAR)) == NULL) {
         region = (PCHAR) DEFAULT_AWS_REGION;
+    }
+
+    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
+    //MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
+    STRNCPY(data.sampleDir, mediaDirectory, MAX_PATH_LEN);
+    if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
+        data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
     }
 
     // Get the duration and convert to an integer
@@ -329,7 +308,7 @@ INT32 main(INT32 argc, CHAR *argv[])
     // default storage size is 128MB. Use setDeviceInfoStorageSize after create to change storage size.
     CHK_STATUS(createDefaultDeviceInfo(&pDeviceInfo));
     // adjust members of pDeviceInfo here if needed
-    pDeviceInfo->clientInfo.loggerLogLevel = LOG_LEVEL_DEBUG;
+    pDeviceInfo->clientInfo.loggerLogLevel = DEFAULT_LOG_LEVEL;
 
     // must larger than MIN_STORAGE_ALLOCATION_SIZE
     pDeviceInfo->storageInfo.storageSize = bufferSize > MIN_STORAGE_ALLOCATION_SIZE ?
