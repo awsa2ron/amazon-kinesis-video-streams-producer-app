@@ -1,6 +1,6 @@
 /*
- * Copyright (C) 2019-2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
- * 
+ * Copyright (C) 2020 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
@@ -10,7 +10,7 @@
  * 
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -20,14 +20,19 @@
  * SOFTWARE.
  */
 
+#include <unistd.h>
+#include <getopt.h>
 #include <com/amazonaws/kinesis/video/cproducer/Include.h>
 
 #define DEFAULT_RETENTION_PERIOD            2 * HUNDREDS_OF_NANOS_IN_AN_HOUR
 #define DEFAULT_BUFFER_DURATION             120 * HUNDREDS_OF_NANOS_IN_A_SECOND
-#define DEFAULT_CALLBACK_CHAIN_COUNT        5
 #define DEFAULT_KEY_FRAME_INTERVAL          45
 #define DEFAULT_FPS_VALUE                   25
 #define DEFAULT_STREAM_DURATION             20 * HUNDREDS_OF_NANOS_IN_A_SECOND
+#define DEFAULT_STORAGE_SIZE                2 * 1024 * 1024
+#define DEFAULT_MEDIA_DIRECTORY             "../" 
+#define DEFAULT_CHANNEL_NAME                "your-kvs-name" 
+#define DEFAULT_AWS_REGION                  "ap-northeast-1" 
 #define SAMPLE_AUDIO_FRAME_DURATION         (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 #define SAMPLE_VIDEO_FRAME_DURATION         (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 #define AUDIO_TRACK_SAMPLING_RATE           48000
@@ -36,6 +41,7 @@
 #define NUMBER_OF_H264_FRAME_FILES          90
 #define NUMBER_OF_AAC_FRAME_FILES           299
 
+#define DEFAULT_LOG_LEVEL                   LOG_LEVEL_INFO
 #define FILE_LOGGING_BUFFER_SIZE            (100 * 1024)
 #define MAX_NUMBER_OF_LOG_FILES             5
 
@@ -54,6 +60,39 @@ typedef struct {
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
+static struct option long_options[] = {
+    /*   NAME       ARGUMENT           FLAG     SHORTNAME */
+    {"channel-name",    required_argument,       NULL, 'n'},
+    {"directory",    required_argument,       NULL, 'd'},
+    {"duration",         required_argument,       NULL, 'D'},
+    {"size",        required_argument,       NULL, 's'},
+    {"help",        no_argument,       NULL, 'h'},
+    {NULL,      0,                 NULL, 0}
+};
+
+void displayUsage( int err )
+{
+    printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
+    printf ("Usage: \n");
+    printf ("AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET\n");
+    printf ("KinesisVideoProducerApp [OPTION]...\n");
+    printf ("\n");
+    printf ("-n, --channel-name     stream channel name\n");
+    printf ("                       default to 'your-kvs-name'\n");
+    printf ("-d, --directory        streaming media directory\n");
+    printf ("                       default to '../'\n");
+    printf ("-D, --duration         streaming duration in second\n");
+    printf ("                       default to 600\n");
+    printf ("-s, --size             stream buffer size in KB\n");
+    printf ("                       default to 2048, minimal to 1024\n");
+    printf ("\n");
+    printf ("Exit status:\n \
+    0  if OK,\n \
+    1  if minor problems (e.g., missing argument),\n \
+    others  if serious trouble, please check 'Include.h' files.\n");
+    exit (err);
+}
+
 PVOID putVideoFrameRoutine(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -65,7 +104,6 @@ PVOID putVideoFrameRoutine(PVOID args)
     CHAR filePath[MAX_PATH_LEN + 1];
 
     CHK(data != NULL, STATUS_NULL_ARG);
-
 
     frame.version = FRAME_CURRENT_VERSION;
     frame.trackId = DEFAULT_VIDEO_TRACK_ID;
@@ -194,64 +232,94 @@ INT32 main(INT32 argc, CHAR *argv[])
     CLIENT_HANDLE clientHandle = INVALID_CLIENT_HANDLE_VALUE;
     STREAM_HANDLE streamHandle = INVALID_STREAM_HANDLE_VALUE;
     STATUS retStatus = STATUS_SUCCESS;
-    PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, streamName = NULL, region = NULL, cacertPath = NULL;
-    UINT64 streamStopTime, streamingDuration = DEFAULT_STREAM_DURATION, fileSize = 0;
+    PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, region = NULL, cacertPath = NULL;
+    PCHAR streamName = DEFAULT_CHANNEL_NAME, mediaDirectory = DEFAULT_MEDIA_DIRECTORY;
+    UINT64 streamStopTime, fileSize = 0, choice, option_index = 0;
+    UINT64 streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE;
     TID audioSendTid, videoSendTid;
-    SampleCustomData data;
-    UINT32 i;
     PTrackInfo pAudioTrack = NULL;
     BYTE audioCpd[KVS_AAC_CPD_SIZE_BYTE];
 
-    CHAR filePath[MAX_PATH_LEN + 1];
-    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
+    SampleCustomData data;
 
-    if (argc < 2) {
-        printf("Usage: AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET %s <stream_name> <duration_in_seconds> <frame_files_path>\n", argv[0]);
-        CHK(FALSE, STATUS_INVALID_ARG);
+    while ((choice = getopt_long(argc, argv, ":n:d:D:s:h",
+                 long_options, &option_index)) != -1) {
+        switch (choice) {
+        case 0:
+            printf ("option %s", long_options[option_index].name);
+            if (optarg)
+                printf (" with arg %s", optarg);
+            printf ("\n");
+            break;
+        case 'n':
+            streamName = optarg;
+            printf ("KVS channel name is '%s'\n", streamName);
+            break;
+        case 'd':
+            mediaDirectory = optarg;
+            printf ("KVS stream media from '%s'\n", mediaDirectory);
+            break;
+        case 'D':
+            CHK_STATUS(STRTOUI64(optarg, NULL, 10, &streamingDuration));
+            printf ("KVS streaming for %d seconds\n", streamingDuration);
+            break;
+        case 's':
+            CHK_STATUS(STRTOUI64(optarg, NULL, 10, &bufferSize));
+            bufferSize *= 1024;
+            printf ("KVS video buffer size is %d Bytes\n", bufferSize);
+            break;
+        case 'h':
+            displayUsage(0);
+            break;
+        case ':':
+            /* missing option argument */
+            fprintf(stderr, "%s: option '-%c' requires an argument\n", argv[0], optopt);
+            displayUsage(1);
+            break;
+        case '?':
+            /* getopt_long already printed an error message. */
+            displayUsage(1);
+            break;
+        default:
+            printf ("?? getopt returned character code 0%o ??\n", choice);
+            displayUsage(1);
+        }
     }
 
     if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
         printf("Error missing credentials\n");
         CHK(FALSE, STATUS_INVALID_ARG);
     }
-
-    MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
-    if (argc < 4) {
-        STRCPY(data.sampleDir, (PCHAR) "../samples");
-    } else {
-        STRNCPY(data.sampleDir, argv[3], MAX_PATH_LEN);
-        if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
-            data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
-        }
-    }
-
-
     cacertPath = getenv(CACERT_PATH_ENV_VAR);
     sessionToken = getenv(SESSION_TOKEN_ENV_VAR);
-    streamName = argv[1];
     if ((region = getenv(DEFAULT_REGION_ENV_VAR)) == NULL) {
         region = (PCHAR) DEFAULT_AWS_REGION;
     }
 
-    if (argc >= 3) {
-        // Get the duration and convert to an integer
-        CHK_STATUS(STRTOUI64(argv[2], NULL, 10, &streamingDuration));
-        printf("streaming for %" PRIu64 " seconds\n", streamingDuration);
-        streamingDuration *= HUNDREDS_OF_NANOS_IN_A_SECOND;
+    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
+    //MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
+    STRNCPY(data.sampleDir, mediaDirectory, MAX_PATH_LEN);
+    if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
+        data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
     }
 
-    streamStopTime = defaultGetTime() + streamingDuration;
+    // Get the duration and convert to an integer
+    streamStopTime = defaultGetTime() + streamingDuration*HUNDREDS_OF_NANOS_IN_A_SECOND;
 
     // default storage size is 128MB. Use setDeviceInfoStorageSize after create to change storage size.
     CHK_STATUS(createDefaultDeviceInfo(&pDeviceInfo));
     // adjust members of pDeviceInfo here if needed
-    pDeviceInfo->clientInfo.loggerLogLevel = LOG_LEVEL_DEBUG;
-    pDeviceInfo->storageInfo.storageSize = 2 * 1024 * 1024;
+    pDeviceInfo->clientInfo.loggerLogLevel = DEFAULT_LOG_LEVEL;
+
+    // must larger than MIN_STORAGE_ALLOCATION_SIZE
+    pDeviceInfo->storageInfo.storageSize = bufferSize > MIN_STORAGE_ALLOCATION_SIZE ?
+                                           bufferSize : 
+                                           MIN_STORAGE_ALLOCATION_SIZE;
+
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
 
     // adjust members of pStreamInfo here if needed
-
     // set up audio cpd.
     pAudioTrack = pStreamInfo->streamCaps.trackInfoList[0].trackId == DEFAULT_AUDIO_TRACK_ID ?
                   &pStreamInfo->streamCaps.trackInfoList[0] :
