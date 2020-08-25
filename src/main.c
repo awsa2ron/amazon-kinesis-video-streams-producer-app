@@ -12,7 +12,7 @@
 #define SAMPLE_VIDEO_FRAME_DURATION         (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 #define AUDIO_TRACK_SAMPLING_RATE           48000
 #define AUDIO_TRACK_CHANNEL_CONFIG          2
-#define DEFAULT_STORAGE_SIZE                2 * 1024 * 1024
+#define DEFAULT_STORAGE_SIZE                20 * 1024 * 1024
 
 #define NUMBER_OF_H264_FRAME_FILES          90
 #define NUMBER_OF_AAC_FRAME_FILES           299
@@ -35,16 +35,33 @@ typedef struct {
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
+/* Flag set by '--x509' */
+static int x509_flag = 0;
+
+static struct option long_options[] = {
+    /*   NAME       ARGUMENT           FLAG     SHORTNAME */
+    {"channel-name",    required_argument,       NULL, 'n'},
+    {"duration",    required_argument,       NULL, 'd'},
+    {"dir",         required_argument,       NULL, 'D'},
+    {"size",        required_argument,       NULL, 's'},
+    {"x509",        no_argument,       &x509_flag, 1},
+    {"help",        no_argument,       NULL, 'h'},
+    {NULL,      0,                 NULL, 0}
+};
+
 void display_usage( int err )
 {
-    printf ("Usage: KinesisVideoProducerApp [OPTION]...\n");
+    printf ("Usage: KinesisVideoProducerApp -n <channel-name> [OPTION]...\n");
     printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
     printf ("\n");
     printf ("Mandatory arguments to long options are mandatory for short options too.\n");
-    printf ("-n, --name             stream name\n");
-    printf ("-d, --duration         streaming duration\n");
-    printf ("-D, --dir              streaming dir\n");
-    printf ("-s, --size             buffer size\n");
+    printf ("-n, --channel-name     stream channel name\n");
+    printf ("-d, --directory        streaming media directory\n");
+    printf ("                       default to '../'\n");
+    printf ("-D, --duration         streaming duration in second\n");
+    printf ("                       default to 600\n");
+    printf ("-s, --size             stream buffer size in KB\n");
+    printf ("                       default to 2048\n");
     printf ("\n");
     printf ("Exit status:\n \
     0  if OK,\n \
@@ -186,24 +203,38 @@ CleanUp:
 
 INT32 main(INT32 argc, CHAR *argv[])
 {
-    int choice;
-    int *channel_name_opt = 0;
-    int *duration_opt = 0;
-    int *media_dir_opt = 0;
-    int *buffer_size_opt = 0;
-    /* Flag set by '--x509' */
-    static int x509_flag = 0;
+    PDeviceInfo pDeviceInfo = NULL;
+    PStreamInfo pStreamInfo = NULL;
+    PClientCallbacks pClientCallbacks = NULL;
+    PStreamCallbacks pStreamCallbacks = NULL;
+    CLIENT_HANDLE clientHandle = INVALID_CLIENT_HANDLE_VALUE;
+    STREAM_HANDLE streamHandle = INVALID_STREAM_HANDLE_VALUE;
+    STATUS retStatus = STATUS_SUCCESS;
+    PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, streamName = NULL, region = NULL, cacertPath = NULL;
+    UINT64 streamStopTime,  fileSize = 0;
+    TID audioSendTid, videoSendTid;
+    SampleCustomData data;
+    UINT32 i;
+    PTrackInfo pAudioTrack = NULL;
+    BYTE audioCpd[KVS_AAC_CPD_SIZE_BYTE];
 
-    static struct option long_options[] = {
-        /*   NAME       ARGUMENT           FLAG     SHORTNAME */
-        {"channel-name",    required_argument,       NULL, 'n'},
-        {"duration",    required_argument,       NULL, 'd'},
-        {"dir",         required_argument,       NULL, 'D'},
-        {"size",        required_argument,       NULL, 's'},
-        {"x509",        no_argument,       &x509_flag, 1},
-        {"help",        no_argument,       NULL, 'h'},
-        {NULL,      0,                 NULL, 0}
-    };
+    CHAR filePath[MAX_PATH_LEN + 1];
+    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
+
+    if (argc < 3) {
+        display_usage(1);
+        CHK(FALSE, STATUS_INVALID_ARG);
+    }
+
+    if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
+        printf("Error missing credentials\n");
+        CHK(FALSE, STATUS_INVALID_ARG);
+    }
+
+    int choice;
+    int *channel_name = 0;
+    int *media_dir = "../";
+    UINT64 streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE;
     int option_index = 0;
 
     while ((choice = getopt_long(argc, argv, ":n:d:D:s:h",
@@ -216,20 +247,21 @@ INT32 main(INT32 argc, CHAR *argv[])
             printf ("\n");
             break;
         case 'n':
-            printf ("KVS channel name is '%s'\n", optarg);
-            channel_name_opt = optarg;
+            channel_name = optarg;
+            printf ("KVS channel name is '%s'\n", channel_name);
             break;
         case 'd':
-            printf ("KVS streaming for '%s' seconds\n", optarg);
-            duration_opt = optarg;
+            media_dir = optarg;
+            printf ("KVS stream media from '%s'\n", media_dir);
             break;
         case 'D':
-            printf ("KVS stream media from '%s'\n", optarg);
-            media_dir_opt = optarg;
+            CHK_STATUS(STRTOUI64(optarg, NULL, 10, &streamingDuration));
+            printf ("KVS streaming for %d seconds\n", streamingDuration);
             break;
         case 's':
-            printf ("KVS video buffer size is '%s'KB\n", optarg);
-            buffer_size_opt = optarg;
+            CHK_STATUS(STRTOUI64(optarg, NULL, 10, &bufferSize));
+            bufferSize *= 1024;
+            printf ("KVS video buffer size is %d KB\n", bufferSize);
             break;
         case 'h':
             display_usage(0);
@@ -257,62 +289,36 @@ INT32 main(INT32 argc, CHAR *argv[])
         printf ("\n");
     }
     
-    PDeviceInfo pDeviceInfo = NULL;
-    PStreamInfo pStreamInfo = NULL;
-    PClientCallbacks pClientCallbacks = NULL;
-    PStreamCallbacks pStreamCallbacks = NULL;
-    CLIENT_HANDLE clientHandle = INVALID_CLIENT_HANDLE_VALUE;
-    STREAM_HANDLE streamHandle = INVALID_STREAM_HANDLE_VALUE;
-    STATUS retStatus = STATUS_SUCCESS;
-    PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, streamName = NULL, region = NULL, cacertPath = NULL;
-    UINT64 streamStopTime, streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE, fileSize = 0;
-    TID audioSendTid, videoSendTid;
-    SampleCustomData data;
-    UINT32 i;
-    PTrackInfo pAudioTrack = NULL;
-    BYTE audioCpd[KVS_AAC_CPD_SIZE_BYTE];
-
-    CHAR filePath[MAX_PATH_LEN + 1];
-    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
-
-    if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
-        printf("Error missing credentials\n");
-        CHK(FALSE, STATUS_INVALID_ARG);
-    }
-
     MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
-    STRNCPY(data.sampleDir, media_dir_opt, MAX_PATH_LEN);
+    STRNCPY(data.sampleDir, media_dir, MAX_PATH_LEN);
     if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
         data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
     }
 
     cacertPath = getenv(CACERT_PATH_ENV_VAR);
     sessionToken = getenv(SESSION_TOKEN_ENV_VAR);
-    streamName = channel_name_opt;
+    streamName = channel_name;
     if ((region = getenv(DEFAULT_REGION_ENV_VAR)) == NULL) {
         region = (PCHAR) DEFAULT_AWS_REGION;
     }
 
     // Get the duration and convert to an integer
-    CHK_STATUS(STRTOUI64(duration_opt, NULL, 10, &streamingDuration));
-    streamingDuration *= HUNDREDS_OF_NANOS_IN_A_SECOND;
-
-    streamStopTime = defaultGetTime() + streamingDuration;
+    streamStopTime = defaultGetTime() + streamingDuration*HUNDREDS_OF_NANOS_IN_A_SECOND;
 
     // default storage size is 128MB. Use setDeviceInfoStorageSize after create to change storage size.
     CHK_STATUS(createDefaultDeviceInfo(&pDeviceInfo));
     // adjust members of pDeviceInfo here if needed
     pDeviceInfo->clientInfo.loggerLogLevel = LOG_LEVEL_DEBUG;
 
-    CHK_STATUS(STRTOUI64(buffer_size_opt, NULL, 10, &bufferSize));
     // must larger than MIN_STORAGE_ALLOCATION_SIZE
-    CHK_STATUS(bufferSize < MIN_STORAGE_ALLOCATION_SIZE / 1024);
-    pDeviceInfo->storageInfo.storageSize = bufferSize * 1024;
+    pDeviceInfo->storageInfo.storageSize = bufferSize > MIN_STORAGE_ALLOCATION_SIZE ?
+                                           bufferSize : 
+                                           MIN_STORAGE_ALLOCATION_SIZE;
+
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
 
     // adjust members of pStreamInfo here if needed
-
     // set up audio cpd.
     pAudioTrack = pStreamInfo->streamCaps.trackInfoList[0].trackId == DEFAULT_AUDIO_TRACK_ID ?
                   &pStreamInfo->streamCaps.trackInfoList[0] :
