@@ -32,7 +32,6 @@
 #define DEFAULT_STORAGE_SIZE                2 * 1024 * 1024
 #define DEFAULT_MEDIA_DIRECTORY             "../" 
 #define DEFAULT_CHANNEL_NAME                "your-kvs-name" 
-#define DEFAULT_AWS_REGION                  "ap-northeast-1" 
 #define SAMPLE_AUDIO_FRAME_DURATION         (20 * HUNDREDS_OF_NANOS_IN_A_MILLISECOND)
 #define SAMPLE_VIDEO_FRAME_DURATION         (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 #define AUDIO_TRACK_SAMPLING_RATE           48000
