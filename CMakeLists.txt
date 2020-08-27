@@ -12,7 +12,7 @@ set(KVS_PIC_PATH ${KVS_PATH}/dependency/libkvspic/kvspic-src/src)
 
 include(ExternalProject)
 
-set(CONFIGURE_COMMAND ${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_zlib/configure --prefix=${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_zlib)
+set(CONFIGURE_COMMAND ${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_zlib/configure --static --prefix=${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_zlib)
 ExternalProject_Add(project_zlib
                     PREFIX          ${CMAKE_CURRENT_BINARY_DIR}/libz
                     GIT_REPOSITORY  https://github.com/madler/zlib.git
@@ -41,7 +41,7 @@ ExternalProject_Add(project_libkvs
 
 add_executable(KinesisVideoProducerApp src/main.c)
 add_dependencies(KinesisVideoProducerApp project_libkvs)
-add_dependencies(KinesisVideoProducerApp project_zlib)
+add_dependencies(project_libkvs project_zlib)
 #target_include_directories (kvsProducer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if("${CMAKE_C_COMPILER_ID}" MATCHES "GNU|Clang")
@@ -72,4 +72,4 @@ target_link_libraries (KinesisVideoProducerApp
                     ${ZLIB_PATH}/lib/libz.a
                     Threads::Threads
                     ${CMAKE_DL_LIBS}
-                    )
+)
