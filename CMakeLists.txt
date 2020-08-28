@@ -7,6 +7,7 @@ find_program(MAKE_EXE NAMES make)
 
 # CMAKE_CURRENT_BINARY_DIR = CMAKE_CURRENT_SOURCE_DIR/build
 set(ZLIB_PATH ${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_zlib)
+set(TLS_PATH ${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_mbedtls)
 set(KVS_PATH ${CMAKE_CURRENT_BINARY_DIR}/producerC/src/project_libkvs)
 set(KVS_PIC_PATH ${KVS_PATH}/dependency/libkvspic/kvspic-src/src)
 
@@ -23,6 +24,21 @@ ExternalProject_Add(project_zlib
                     INSTALL_COMMAND   ${MAKE_EXE} install
                     TEST_COMMAND    ""
 )
+
+set(BUILD_SHARED 1)
+ExternalProject_Add(
+                    project_mbedtls
+                    GIT_REPOSITORY 	https://github.com/ARMmbed/mbedtls.git
+                    GIT_TAG 			  mbedtls-2.16.5
+                    PREFIX 			    ${CMAKE_CURRENT_BINARY_DIR}/mbedtls
+                    CMAKE_ARGS
+                        -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libz/src/project_mbedtls
+                        -DUSE_SHARED_MBEDTLS_LIBRARY=${BUILD_SHARED}
+                        -DCMAKE_BUILD_TYPE=Release
+                    BUILD_ALWAYS 		TRUE
+                    TEST_COMMAND 		""
+)
+
 
 ExternalProject_Add(project_libkvs
                     PREFIX          ${CMAKE_CURRENT_BINARY_DIR}/producerC
@@ -42,6 +58,7 @@ ExternalProject_Add(project_libkvs
 add_executable(KinesisVideoProducerApp src/main.c)
 add_dependencies(KinesisVideoProducerApp project_libkvs)
 add_dependencies(project_libkvs project_zlib)
+add_dependencies(project_libkvs project_mbedtls)
 #target_include_directories (kvsProducer PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 if("${CMAKE_C_COMPILER_ID}" MATCHES "GNU|Clang")
@@ -66,9 +83,9 @@ target_link_libraries (KinesisVideoProducerApp
                     ${KVS_PATH}-build/libkvsCommonCurl.a
                     ${KVS_PATH}-build/dependency/libkvspic/kvspic-src/libkvspic.a
                     ${KVS_PATH}/open-source/lib/libcurl.a
-                    ${KVS_PATH}/open-source/lib/libmbedtls.a
-                    ${KVS_PATH}/open-source/lib/libmbedx509.a
-                    ${KVS_PATH}/open-source/lib/libmbedcrypto.a
+                    ${TLS_PATH}/lib/libmbedtls.so
+                    ${TLS_PATH}/lib/libmbedx509.so
+                    ${TLS_PATH}/lib/libmbedcrypto.so
                     ${ZLIB_PATH}/lib/libz.a
                     Threads::Threads
                     ${CMAKE_DL_LIBS}
