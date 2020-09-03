@@ -10,12 +10,4 @@ set(CMAKE_EXE_LINKER_FLAGS "-L${KinesisVideoProducerC_SOURCE_DIR}/open-source/li
 
 add_executable(${PROJECT_NAME} kvs.c)
 
-file(GLOB PIC_HEADERS "${KinesisVideoProducerC_SOURCE_DIR}/dependency/libkvspic/kvspic-src/src/*/include")
-include_directories(
-                    ${PIC_HEADERS}
-                    ${KinesisVideoProducerC_SOURCE_DIR}/src/include
-                    ${KinesisVideoProducerC_SOURCE_DIR}/open-source/include
-)
-
-
-target_link_libraries (${PROJECT_NAME} cproducer)
+target_link_libraries (${PROJECT_NAME} cproducer kvs::header)
