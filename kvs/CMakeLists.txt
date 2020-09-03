@@ -8,7 +8,7 @@ if("${CMAKE_C_COMPILER_ID}" MATCHES "GNU|Clang")
 endif()
 set(CMAKE_EXE_LINKER_FLAGS "-L${KinesisVideoProducerC_SOURCE_DIR}/open-source/lib")
 
-add_executable(${PROJECT_NAME} main.c)
+add_executable(${PROJECT_NAME} kvs.c)
 
 file(GLOB PIC_HEADERS "${KinesisVideoProducerC_SOURCE_DIR}/dependency/libkvspic/kvspic-src/src/*/include")
 include_directories(
