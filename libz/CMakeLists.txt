@@ -12,7 +12,6 @@ ExternalProject_Add(project_zlib
                     GIT_TAG         v1.2.9
                     CONFIGURE_COMMAND ${CONFIGURE_COMMAND} 
                     BUILD_COMMAND     ${MAKE_EXE}
-                    BUILD_IN_SOURCE   TRUE
                     INSTALL_COMMAND   ${MAKE_EXE} install
                     TEST_COMMAND    ""
 )
