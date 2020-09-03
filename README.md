@@ -39,12 +39,12 @@ cmake .. -DBUILD_STATIC=TRUE -DUSE_OPENSSL=FALSE -DUSE_MBEDTLS=TRUE
 make
 
 # Long options
-$ ./KinesisVideoProducerApp --channel-name your-kvs-name \
+$ ./kvs --channel-name your-kvs-name \
                             --directory ../ \
                             --duration 600 \
                             --size 2048
 # Or short options
-$ ./KinesisVideoProducerApp -n your-kvs-name -D 600 -d ../ -s 2048
+$ ./kvs -n your-kvs-name -D 600 -d ../ -s 2048
 ```
 
 
@@ -52,11 +52,11 @@ You can use the following configuration interface to customize the application.
 
 
 ```
-$ ./KinesisVideoProducerApp --help
+$ ./kvs --help
 Ingest video to the Amazon Kinesis Video Streams service.
 Usage: 
 AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET
-KinesisVideoProducerApp [OPTION]...
+kvs [OPTION]...
 
 -n, --channel-name     stream channel name
                        default to 'your-kvs-name'
