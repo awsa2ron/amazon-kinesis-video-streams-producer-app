@@ -7,4 +7,4 @@ add_subdirectory(amazon-kinesis-video-streams-producer-c)
 add_subdirectory(kvs)
 add_subdirectory(libkvs)
 
-add_dependencies(cproducer libz)
+add_dependencies(cproducer project_zlib)

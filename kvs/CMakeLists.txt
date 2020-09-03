@@ -10,7 +10,7 @@ set(CMAKE_EXE_LINKER_FLAGS "-L${KinesisVideoProducerC_SOURCE_DIR}/open-source/li
 
 add_executable(${PROJECT_NAME} kvs.c)
 
-target_link_libraries (${PROJECT_NAME} cproducer kvs::header)
+target_link_libraries(${PROJECT_NAME} cproducer kvs::header)
 
 # Binaries
 install (TARGETS ${PROJECT_NAME}

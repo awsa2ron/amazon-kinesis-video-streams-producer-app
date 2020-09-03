@@ -17,8 +17,7 @@ target_include_directories(${PROJECT_NAME}
 # Library
 # Note: may not work on windows
 install (TARGETS ${PROJECT_NAME}
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib/static)
+    LIBRARY DESTINATION lib)
 
 install (DIRECTORY ${KinesisVideoProducerC_SOURCE_DIR}/open-source/lib/
     DESTINATION lib
