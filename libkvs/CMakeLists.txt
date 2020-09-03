@@ -13,3 +13,18 @@ target_include_directories(${PROJECT_NAME}
         ${KinesisVideoProducerC_SOURCE_DIR}/src/include
         ${KinesisVideoProducerC_SOURCE_DIR}/open-source/include
 )
+
+# Library
+# Note: may not work on windows
+install (TARGETS ${PROJECT_NAME}
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib/static)
+
+install (DIRECTORY ${KinesisVideoProducerC_SOURCE_DIR}/open-source/lib/
+    DESTINATION lib
+    FILES_MATCHING PATTERN "*.so*")
+
+# Header files
+install(DIRECTORY ${KinesisVideoProducerC_SOURCE_DIR}/src/include/
+    ${KinesisVideoProducerC_SOURCE_DIR}/open-source/include/
+    DESTINATION include)
