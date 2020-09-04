@@ -59,39 +59,6 @@ typedef struct {
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
-static struct option long_options[] = {
-    /*   NAME       ARGUMENT           FLAG     SHORTNAME */
-    {"channel-name",    required_argument,       NULL, 'n'},
-    {"directory",    required_argument,       NULL, 'd'},
-    {"duration",         required_argument,       NULL, 'D'},
-    {"size",        required_argument,       NULL, 's'},
-    {"help",        no_argument,       NULL, 'h'},
-    {NULL,      0,                 NULL, 0}
-};
-
-void displayUsage( int err )
-{
-    printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
-    printf ("Usage: \n");
-    printf ("AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET\n");
-    printf ("kvs [OPTION]...\n");
-    printf ("\n");
-    printf ("-n, --channel-name     stream channel name\n");
-    printf ("                       default to 'your-kvs-name'\n");
-    printf ("-d, --directory        streaming media directory\n");
-    printf ("                       default to '../'\n");
-    printf ("-D, --duration         streaming duration in second\n");
-    printf ("                       default to 600\n");
-    printf ("-s, --size             stream buffer size in KB\n");
-    printf ("                       default to 2048, minimal to 1024\n");
-    printf ("\n");
-    printf ("Exit status:\n \
-    0  if OK,\n \
-    1  if minor problems (e.g., missing argument),\n \
-    others  if serious trouble, please check 'Include.h' files.\n");
-    exit (err);
-}
-
 PVOID putVideoFrameRoutine(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -240,50 +207,6 @@ INT32 main(INT32 argc, CHAR *argv[])
     BYTE audioCpd[KVS_AAC_CPD_SIZE_BYTE];
 
     SampleCustomData data;
-
-    while ((choice = getopt_long(argc, argv, ":n:d:D:s:h",
-                 long_options, &option_index)) != -1) {
-        switch (choice) {
-        case 0:
-            printf ("option %s", long_options[option_index].name);
-            if (optarg)
-                printf (" with arg %s", optarg);
-            printf ("\n");
-            break;
-        case 'n':
-            streamName = optarg;
-            printf ("KVS channel name is '%s'\n", streamName);
-            break;
-        case 'd':
-            mediaDirectory = optarg;
-            printf ("KVS stream media from '%s'\n", mediaDirectory);
-            break;
-        case 'D':
-            CHK_STATUS(STRTOUI64(optarg, NULL, 10, &streamingDuration));
-            printf ("KVS streaming for %d seconds\n", streamingDuration);
-            break;
-        case 's':
-            CHK_STATUS(STRTOUI64(optarg, NULL, 10, &bufferSize));
-            bufferSize *= 1024;
-            printf ("KVS video buffer size is %d Bytes\n", bufferSize);
-            break;
-        case 'h':
-            displayUsage(0);
-            break;
-        case ':':
-            /* missing option argument */
-            fprintf(stderr, "%s: option '-%c' requires an argument\n", argv[0], optopt);
-            displayUsage(1);
-            break;
-        case '?':
-            /* getopt_long already printed an error message. */
-            displayUsage(1);
-            break;
-        default:
-            printf ("?? getopt returned character code 0%o ??\n", choice);
-            displayUsage(1);
-        }
-    }
 
     if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
         printf("Error missing credentials\n");
