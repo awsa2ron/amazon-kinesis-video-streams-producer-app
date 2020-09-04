@@ -1,5 +1,5 @@
-IDIR =../build/include
-LDIR =../build/lib
+IDIR =../include
+LDIR =../lib
 CC=gcc
 CFLAGS=-I$(IDIR)
 

@@ -45,24 +45,23 @@
 #define MAX_NUMBER_OF_LOG_FILES             5
 
 typedef struct {
+    UINT8 type; // 0:P frame 1: I frame
     PBYTE buffer;
     UINT32 size;
-} FrameData, *PFrameData;
+    STREAM_HANDLE streamHandle;
+} videoFrameData, *PvideoFrameData;
 
 typedef struct {
-    volatile ATOMIC_BOOL firstVideoFramePut;
-    UINT64 streamStopTime;
-    UINT64 streamStartTime;
+    UINT8 type; // AAC_LC = 2
+    PBYTE buffer;
+    UINT32 size;
     STREAM_HANDLE streamHandle;
-    CHAR sampleDir[MAX_PATH_LEN + 1];
-    FrameData audioFrames;
-    FrameData videoFrames;
-} SampleCustomData, *PSampleCustomData;
+} audioFrameData, *PaudioFrameData;
 
 PVOID putVideoFrameRoutine(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PSampleCustomData data = (PSampleCustomData) args;
+    PvideoFrameData data = (PvideoFrameData) args;
     Frame frame;
     UINT32 videoFileIndex= 0;
     STATUS status;
@@ -78,21 +77,12 @@ PVOID putVideoFrameRoutine(PVOID args)
     frame.presentationTs = 0;
     frame.index = 0;
 
-    while (defaultGetTime() < data->streamStopTime) {
-        SNPRINTF(filePath, MAX_PATH_LEN, "%s/h264SampleFrames/frame-%03d.h264", data->sampleDir, videoFileIndex + 1);
-        CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-        data->videoFrames.buffer = (PBYTE) MEMALLOC(fileSize);
-        data->videoFrames.size = fileSize;
-        CHK_STATUS(readFile(filePath, TRUE, data->videoFrames.buffer, &fileSize));
-
-        frame.frameData = data->videoFrames.buffer;
-        frame.size = data->videoFrames.size;
-
-        // video track is used to mark new fragment. A new fragment is generated for every frame with FRAME_FLAG_KEY_FRAME
-        frame.flags = videoFileIndex% DEFAULT_KEY_FRAME_INTERVAL == 0 ? FRAME_FLAG_KEY_FRAME : FRAME_FLAG_NONE;
+    while (1) {
+        frame.frameData = data->buffer;
+        frame.size = data->size;
+        frame.flags = data->type;
 
         status = putKinesisVideoFrame(data->streamHandle, &frame);
-        ATOMIC_STORE_BOOL(&data->firstVideoFramePut, TRUE);
         if (STATUS_FAILED(status)) {
             printf("putKinesisVideoFrame failed with 0x%08x\n", status);
             status = STATUS_SUCCESS;
@@ -106,9 +96,9 @@ PVOID putVideoFrameRoutine(PVOID args)
         if(videoFileIndex == NUMBER_OF_H264_FRAME_FILES)
             videoFileIndex = 0;
 
-        SAFE_MEMFREE(data->videoFrames.buffer);
+        SAFE_MEMFREE(data->buffer);
         // synchronize putKinesisVideoFrame to running time
-        runningTime = defaultGetTime() - data->streamStartTime;
+        //runningTime = defaultGetTime() - data->streamStartTime;
         if (runningTime < frame.presentationTs) {
             // reduce sleep time a little for smoother video
             THREAD_SLEEP((frame.presentationTs - runningTime) * 0.9);
@@ -127,7 +117,7 @@ CleanUp:
 PVOID putAudioFrameRoutine(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
-    PSampleCustomData data = (PSampleCustomData) args;
+    PaudioFrameData data = (PaudioFrameData) args;
     Frame frame;
     UINT32 audioFileIndex = 0;
     STATUS status;
@@ -144,39 +134,31 @@ PVOID putAudioFrameRoutine(PVOID args)
     frame.index = 0;
     frame.flags = FRAME_FLAG_NONE; // audio track is not used to cut fragment
 
-    while (defaultGetTime() < data->streamStopTime) {
+    while (1) {
         // no audio can be put until first video frame is put
-        if (ATOMIC_LOAD_BOOL(&data->firstVideoFramePut)) {
-            SNPRINTF(filePath, MAX_PATH_LEN, "%s/aacSampleFrames/sample-%03d.aac", data->sampleDir, audioFileIndex + 1);
-            CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
-            data->audioFrames.buffer = (PBYTE) MEMALLOC(fileSize);
-            data->audioFrames.size = fileSize;
-            CHK_STATUS(readFile(filePath, TRUE, data->audioFrames.buffer, &fileSize));
+        frame.frameData = data->buffer;
+        frame.size = data->size;
 
-            frame.frameData = data->audioFrames.buffer;
-            frame.size = data->audioFrames.size;
+        status = putKinesisVideoFrame(data->streamHandle, &frame);
+        if (STATUS_FAILED(status)) {
+            printf("putKinesisVideoFrame for audio failed with 0x%08x\n", status);
+            status = STATUS_SUCCESS;
+        }
 
-            status = putKinesisVideoFrame(data->streamHandle, &frame);
-            if (STATUS_FAILED(status)) {
-                printf("putKinesisVideoFrame for audio failed with 0x%08x\n", status);
-                status = STATUS_SUCCESS;
-            }
+        frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;
+        frame.decodingTs = frame.presentationTs;
+        frame.index++;
 
-            frame.presentationTs += SAMPLE_AUDIO_FRAME_DURATION;
-            frame.decodingTs = frame.presentationTs;
-            frame.index++;
+        audioFileIndex++;
+        if(audioFileIndex == NUMBER_OF_AAC_FRAME_FILES)
+            audioFileIndex = 0;
 
-            audioFileIndex++;
-            if(audioFileIndex == NUMBER_OF_AAC_FRAME_FILES)
-                audioFileIndex = 0;
+        SAFE_MEMFREE(data->buffer);
 
-            SAFE_MEMFREE(data->audioFrames.buffer);
-
-            // synchronize putKinesisVideoFrame to running time
-            runningTime = defaultGetTime() - data->streamStartTime;
-            if (runningTime < frame.presentationTs) {
-                THREAD_SLEEP(frame.presentationTs - runningTime);
-            }
+        // synchronize putKinesisVideoFrame to running time
+        //runningTime = defaultGetTime() - data->streamStartTime;
+        if (runningTime < frame.presentationTs) {
+            THREAD_SLEEP(frame.presentationTs - runningTime);
         }
     }
 
@@ -200,14 +182,12 @@ INT32 main(INT32 argc, CHAR *argv[])
     STATUS retStatus = STATUS_SUCCESS;
     PCHAR accessKey = NULL, secretKey = NULL, sessionToken = NULL, region = NULL, cacertPath = NULL;
     PCHAR streamName = DEFAULT_CHANNEL_NAME, mediaDirectory = DEFAULT_MEDIA_DIRECTORY;
-    UINT64 streamStopTime, fileSize = 0, choice, option_index = 0;
-    UINT64 streamingDuration = DEFAULT_STREAM_DURATION, bufferSize = DEFAULT_STORAGE_SIZE;
-    TID audioSendTid, videoSendTid;
+    UINT64 bufferSize = DEFAULT_STORAGE_SIZE;
     PTrackInfo pAudioTrack = NULL;
     BYTE audioCpd[KVS_AAC_CPD_SIZE_BYTE];
 
-    SampleCustomData data;
-
+/* get env */
+/* accessKey, secretKey */
     if ((accessKey = getenv(ACCESS_KEY_ENV_VAR)) == NULL || (secretKey = getenv(SECRET_KEY_ENV_VAR)) == NULL) {
         printf("Error missing credentials\n");
         CHK(FALSE, STATUS_INVALID_ARG);
@@ -218,16 +198,7 @@ INT32 main(INT32 argc, CHAR *argv[])
         region = (PCHAR) DEFAULT_AWS_REGION;
     }
 
-    MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
-    //MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
-    STRNCPY(data.sampleDir, mediaDirectory, MAX_PATH_LEN);
-    if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
-        data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
-    }
-
-    // Get the duration and convert to an integer
-    streamStopTime = defaultGetTime() + streamingDuration*HUNDREDS_OF_NANOS_IN_A_SECOND;
-
+/* init */
     // default storage size is 128MB. Use setDeviceInfoStorageSize after create to change storage size.
     CHK_STATUS(createDefaultDeviceInfo(&pDeviceInfo));
     // adjust members of pDeviceInfo here if needed
@@ -237,7 +208,6 @@ INT32 main(INT32 argc, CHAR *argv[])
     pDeviceInfo->storageInfo.storageSize = bufferSize > MIN_STORAGE_ALLOCATION_SIZE ?
                                            bufferSize : 
                                            MIN_STORAGE_ALLOCATION_SIZE;
-
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
 
@@ -280,19 +250,16 @@ INT32 main(INT32 argc, CHAR *argv[])
     CHK_STATUS(createKinesisVideoClient(pDeviceInfo, pClientCallbacks, &clientHandle));
     CHK_STATUS(createKinesisVideoStreamSync(clientHandle, pStreamInfo, &streamHandle));
 
-    data.streamStopTime = streamStopTime;
-    data.streamHandle = streamHandle;
-    data.streamStartTime = defaultGetTime();
-    ATOMIC_STORE_BOOL(&data.firstVideoFramePut, FALSE);
+    while(1){
+/* videoSend triggered by video codec output */
+    videoFrameData videoFrame;
+    putVideoFrameRoutine(&videoFrame);
+/* audioSend triggered by audio codec output, no audio can be put until first video frame is put */
+    audioFrameData audioFrame;
+    putAudioFrameRoutine(&audioFrame);
+    }
 
-    THREAD_CREATE(&videoSendTid, putVideoFrameRoutine,
-                          (PVOID) &data);
-    THREAD_CREATE(&audioSendTid, putAudioFrameRoutine,
-                          (PVOID) &data);
-
-    THREAD_JOIN(videoSendTid, NULL);
-    THREAD_JOIN(audioSendTid, NULL);
-
+/* stop and free resources */
     CHK_STATUS(stopKinesisVideoStreamSync(streamHandle));
     CHK_STATUS(freeKinesisVideoStream(&streamHandle));
     CHK_STATUS(freeKinesisVideoClient(&clientHandle));
@@ -303,7 +270,7 @@ CleanUp:
         printf("Failed with status 0x%08x\n", retStatus);
     }
 
-
+/* clean up in case */
     freeDeviceInfo(&pDeviceInfo);
     freeStreamInfoProvider(&pStreamInfo);
     freeKinesisVideoStream(&streamHandle);

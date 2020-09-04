@@ -1,0 +1,13 @@
+IDIR =../include
+LDIR =../lib
+CC=gcc
+CFLAGS=-I$(IDIR)
+
+all:
+	$(CC) -pthread -lz -ldl main.c -o main $(CFLAGS) \
+	-L$(LDIR) -lcproducer -lkvsCommonCurl -lkvspic -lcurl -lssl -lcrypto
+
+.PHONY: clean
+
+clean:
+	rm -f sample
