@@ -31,11 +31,11 @@ This application runs on any Linux system with a file system and internet connec
 
 ```
 `# git clone <somewhere>`
-`cd amazon``-``kinesis``-``video``-``streams``-``producer``-``app`
+`cd amazon-kinesis-video-streams-producer-app`
 mkdir build
 cd build
 # export CC if cross compile
-cmake .. -DBUILD_STATIC=TRUE -DUSE_OPENSSL=FALSE -DUSE_MBEDTLS=TRUE
+cmake .. -DUSE_OPENSSL=FALSE -DUSE_MBEDTLS=TRUE
 make
 
 # Long options

@@ -74,7 +74,7 @@ void displayUsage( int err )
     printf ("Ingest video to the Amazon Kinesis Video Streams service.\n");
     printf ("Usage: \n");
     printf ("AWS_ACCESS_KEY_ID=SAMPLEKEY AWS_SECRET_ACCESS_KEY=SAMPLESECRET\n");
-    printf ("kvs [OPTION]...\n");
+    printf ("kvs [options...]\n");
     printf ("\n");
     printf ("-n, --channel-name     stream channel name\n");
     printf ("                       default to 'your-kvs-name'\n");
