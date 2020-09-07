@@ -60,13 +60,13 @@ typedef struct {
 } SampleCustomData, *PSampleCustomData;
 
 static struct option long_options[] = {
-    /*   NAME       ARGUMENT           FLAG     SHORTNAME */
-    {"channel-name",    required_argument,       NULL, 'n'},
-    {"directory",    required_argument,       NULL, 'd'},
-    {"duration",         required_argument,       NULL, 'D'},
-    {"size",        required_argument,       NULL, 's'},
-    {"help",        no_argument,       NULL, 'h'},
-    {NULL,      0,                 NULL, 0}
+    /*   NAME           ARGUMENT            FLAG    SHORTNAME */
+    {"channel-name",    required_argument,  NULL,   'n'},
+    {"directory",       required_argument,  NULL,   'd'},
+    {"duration",        required_argument,  NULL,   'D'},
+    {"size",            required_argument,  NULL,   's'},
+    {"help",            no_argument,        NULL,   'h'},
+    {NULL,              0,                  NULL,   0}
 };
 
 void displayUsage( int err )
@@ -296,7 +296,6 @@ INT32 main(INT32 argc, CHAR *argv[])
     }
 
     MEMSET(&data, 0x00, SIZEOF(SampleCustomData));
-    //MEMSET(data.sampleDir, 0x00, MAX_PATH_LEN + 1);
     STRNCPY(data.sampleDir, mediaDirectory, MAX_PATH_LEN);
     if (data.sampleDir[STRLEN(data.sampleDir) - 1] == '/') {
         data.sampleDir[STRLEN(data.sampleDir) - 1] = '\0';
