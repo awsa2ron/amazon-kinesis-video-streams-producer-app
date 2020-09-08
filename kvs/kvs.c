@@ -36,6 +36,7 @@
 #define SAMPLE_VIDEO_FRAME_DURATION         (HUNDREDS_OF_NANOS_IN_A_SECOND / DEFAULT_FPS_VALUE)
 #define AUDIO_TRACK_SAMPLING_RATE           48000
 #define AUDIO_TRACK_CHANNEL_CONFIG          2
+#define MAX_KVS_HEAP_SIZE                   256 * 1024
 
 #define NUMBER_OF_H264_FRAME_FILES          90
 #define NUMBER_OF_AAC_FRAME_FILES           299
@@ -54,6 +55,7 @@ typedef struct {
     UINT64 streamStopTime;
     UINT64 streamStartTime;
     STREAM_HANDLE streamHandle;
+    CLIENT_HANDLE clientHandle;
     CHAR sampleDir[MAX_PATH_LEN + 1];
     FrameData audioFrames;
     FrameData videoFrames;
@@ -111,6 +113,9 @@ PVOID putVideoFrameRoutine(PVOID args)
     frame.presentationTs = 0;
     frame.index = 0;
 
+    ClientMetrics kinesisVideoClientMetrics;
+    kinesisVideoClientMetrics.version = CLIENT_METRICS_CURRENT_VERSION;
+
     while (defaultGetTime() < data->streamStopTime) {
         SNPRINTF(filePath, MAX_PATH_LEN, "%s/h264SampleFrames/frame-%03d.h264", data->sampleDir, videoFileIndex + 1);
         CHK_STATUS(readFile(filePath, TRUE, NULL, &fileSize));
@@ -123,6 +128,21 @@ PVOID putVideoFrameRoutine(PVOID args)
 
         // video track is used to mark new fragment. A new fragment is generated for every frame with FRAME_FLAG_KEY_FRAME
         frame.flags = videoFileIndex% DEFAULT_KEY_FRAME_INTERVAL == 0 ? FRAME_FLAG_KEY_FRAME : FRAME_FLAG_NONE;
+
+        CHK_STATUS(getKinesisVideoMetrics(data->clientHandle, &kinesisVideoClientMetrics));
+
+        printf("Overall storage size:%d KB, Available:%d KB and this Video frame size:%d KB.\n", \
+                kinesisVideoClientMetrics.contentStoreSize >> 10, \
+                (kinesisVideoClientMetrics.contentStoreAvailableSize - MAX_KVS_HEAP_SIZE) >> 10, \
+                frame.size >> 10 \
+        );
+
+        if(frame.size > kinesisVideoClientMetrics.contentStoreAvailableSize - MAX_KVS_HEAP_SIZE )
+        {
+            printf("No enough buffer for video data.\n");
+            THREAD_SLEEP(frame.duration);
+            continue;
+        }
 
         status = putKinesisVideoFrame(data->streamHandle, &frame);
         ATOMIC_STORE_BOOL(&data->firstVideoFramePut, TRUE);
@@ -306,14 +326,14 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     // default storage size is 128MB. Use setDeviceInfoStorageSize after create to change storage size.
     CHK_STATUS(createDefaultDeviceInfo(&pDeviceInfo));
-    // adjust members of pDeviceInfo here if needed
-    pDeviceInfo->clientInfo.loggerLogLevel = DEFAULT_LOG_LEVEL;
-
-    // must larger than MIN_STORAGE_ALLOCATION_SIZE
+    // storage size must larger than MIN_STORAGE_ALLOCATION_SIZE
     pDeviceInfo->storageInfo.storageSize = bufferSize > MIN_STORAGE_ALLOCATION_SIZE ?
                                            bufferSize : 
                                            MIN_STORAGE_ALLOCATION_SIZE;
-
+    // change storage size.
+    CHK_STATUS(setDeviceInfoStorageSize(pDeviceInfo, pDeviceInfo->storageInfo.storageSize));
+    // adjust members of pDeviceInfo here if needed
+    pDeviceInfo->clientInfo.loggerLogLevel = DEFAULT_LOG_LEVEL;
 
     CHK_STATUS(createRealtimeAudioVideoStreamInfoProvider(streamName, DEFAULT_RETENTION_PERIOD, DEFAULT_BUFFER_DURATION, &pStreamInfo));
 
@@ -358,6 +378,7 @@ INT32 main(INT32 argc, CHAR *argv[])
 
     data.streamStopTime = streamStopTime;
     data.streamHandle = streamHandle;
+    data.clientHandle = clientHandle;
     data.streamStartTime = defaultGetTime();
     ATOMIC_STORE_BOOL(&data.firstVideoFramePut, FALSE);
 
@@ -388,3 +409,4 @@ CleanUp:
 
     return (INT32) retStatus;
 }
+
