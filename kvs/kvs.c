@@ -61,14 +61,17 @@ typedef struct {
     FrameData videoFrames;
 } SampleCustomData, *PSampleCustomData;
 
+static int x509_flag;
+
 static struct option long_options[] = {
-    /*   NAME           ARGUMENT            FLAG    SHORTNAME */
-    {"channel-name",    required_argument,  NULL,   'n'},
-    {"directory",       required_argument,  NULL,   'd'},
-    {"duration",        required_argument,  NULL,   'D'},
-    {"size",            required_argument,  NULL,   's'},
-    {"help",            no_argument,        NULL,   'h'},
-    {NULL,              0,                  NULL,   0}
+    /*   NAME           ARGUMENT            FLAG        SHORTNAME */
+    {"channel-name",    required_argument,  NULL,       'n'},
+    {"directory",       required_argument,  NULL,       'd'},
+    {"duration",        required_argument,  NULL,       'D'},
+    {"size",            required_argument,  NULL,       's'},
+    {"help",            no_argument,        NULL,       'h'},
+    {"x509",            no_argument,        &x509_flag, 1},
+    {NULL,              0,                  NULL,       0}
 };
 
 void displayUsage( int err )
@@ -350,15 +353,27 @@ INT32 main(INT32 argc, CHAR *argv[])
     // use relative time mode. Buffer timestamps start from 0
     pStreamInfo->streamCaps.absoluteFragmentTimes = FALSE;
 
-    CHK_STATUS(createDefaultCallbacksProviderWithAwsCredentials(accessKey,
-                                                                secretKey,
-                                                                sessionToken,
-                                                                MAX_UINT64,
-                                                                region,
-                                                                cacertPath,
-                                                                NULL,
-                                                                NULL,
-                                                                &pClientCallbacks));
+    if (x509_flag)
+        CHK_STATUS(createDefaultCallbacksProviderWithIotCertificate("c2en6ev5g9yt5q.credentials.iot.ap-northeast-1.amazonaws.com",
+                                                                    "certificate.pem",
+                                                                    "private.pem.key",
+                                                                    "cacert.pem",
+                                                                    "KvsCameraIoTRoleAlias",
+                                                                    "kvs_example_camera_stream",
+                                                                    region,
+                                                                    NULL,
+                                                                    NULL,
+                                                                    &pClientCallbacks));
+    else
+        CHK_STATUS(createDefaultCallbacksProviderWithAwsCredentials(accessKey,
+                                                                    secretKey,
+                                                                    sessionToken,
+                                                                    MAX_UINT64,
+                                                                    region,
+                                                                    cacertPath,
+                                                                    NULL,
+                                                                    NULL,
+                                                                    &pClientCallbacks));
 
     if(NULL != getenv(ENABLE_FILE_LOGGING)) {
         if((retStatus = addFileLoggerPlatformCallbacksProvider(pClientCallbacks,
