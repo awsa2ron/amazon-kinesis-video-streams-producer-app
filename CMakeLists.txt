@@ -4,7 +4,7 @@ project(kvsproject)
 
 #set(${CMAKE_INSTALL_PREFIX} ${CMAKE_BINARY_DIR})
 
-add_subdirectory(libz)
+add_subdirectory(dependences)
 add_subdirectory(amazon-kinesis-video-streams-producer-c)
 add_subdirectory(kvs)
 add_subdirectory(libkvs)
