@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10.2)
 
 project(kvsproject)
 
-#set(${CMAKE_INSTALL_PREFIX} ${CMAKE_BINARY_DIR})
+set(${CMAKE_INSTALL_PREFIX} ${CMAKE_BINARY_DIR})
 
 add_subdirectory(dependences)
 add_subdirectory(amazon-kinesis-video-streams-producer-c)
