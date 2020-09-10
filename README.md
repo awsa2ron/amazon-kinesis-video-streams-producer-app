@@ -30,14 +30,30 @@ This application runs on any Linux system with a file system and internet connec
 ## Download and Build
 
 ```
-`# git clone <somewhere>`
-`cd amazon-kinesis-video-streams-producer-app`
+# git clone <somewhere>
+cd amazon-kinesis-video-streams-producer-app
 mkdir build
 cd build
 # export CC if cross compile
 cmake .. -DUSE_OPENSSL=FALSE -DUSE_MBEDTLS=TRUE
 make
+make install
+```
 
+package content:
+```
+tree -L 1
+.
+├── aacSampleFrames
+├── bin
+├── h264SampleFrames
+├── include
+├── lib
+└── samples
+```
+bin example:
+
+```
 # Long options
 $ ./kvs --channel-name your-kvs-name \
                             --directory ../ \
