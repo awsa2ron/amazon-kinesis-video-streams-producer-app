@@ -4,7 +4,7 @@ CC=gcc
 CFLAGS=-I$(IDIR)
 
 all:
-	$(CC) -pthread -lz -ldl main.c -o main $(CFLAGS) \
+	$(CC) -pthread -lz -ldl KvsVideoOnlyStreamingSample.c -o main $(CFLAGS) \
 	-L$(LDIR) -lcproducer -lkvsCommonCurl -lkvspic -lcurl -lssl -lcrypto
 
 .PHONY: clean

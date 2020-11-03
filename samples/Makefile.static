@@ -1,7 +1,6 @@
 IDIR =../include
 LDIR =../lib
-CC=gcc
-CFLAGS=-I$(IDIR)
+CFLAGS=-I$(IDIR) -static
 
 all:
 	$(CC) -pthread -lz -ldl KvsVideoOnlyStreamingSample.c -o main $(CFLAGS) \
@@ -10,4 +9,4 @@ all:
 .PHONY: clean
 
 clean:
-	rm -f sample
+	rm -f main
