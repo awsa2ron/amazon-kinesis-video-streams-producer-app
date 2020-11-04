@@ -1,6 +1,8 @@
 IDIR =../include
 LDIR =../lib
 CFLAGS=-I$(IDIR) -static
+# Please export your Compiler Collection
+# CC=xxx-gcc
 
 all:
 	$(CC) -pthread -lz -ldl KvsVideoOnlyStreamingSample.c -o main $(CFLAGS) \
